@@ -10,9 +10,10 @@ from Models.Preferences import Preferences
 from Models.Account import Account
 from spotipy.oauth2 import SpotifyOAuth
 
-
+SPOTIPY_CLIENT_ID='fe921ddf76d440e48f8766f8d040e71d'
+SPOTIPY_CLIENT_SECRET='464ab682558e4d3ea49be40d4efc2294'
 """
-pickSong
+pickNewSong
 
 :returns a spotify track
 
@@ -23,9 +24,50 @@ parameters
 Notes:
 We don't allow the ALBUM point of commonality for singles
 """
-def pickSong(seed, pointOfCommonality):
+
+"""
+Goal: Check for duplicates of songs within a playlist
+song: title of track (String)
+playlist: list of track titles (List of Strings)
+
+returns true if song is a duplicate, false if not found in playlist
+"""
+def isDuplicate(song, playlist):
+    if(song in playlist):
+        return True
+    return False
+"""
+Goal: Make user decide which singular playlist they want to update
+
+Reason: Temporary functionality for testing
+Notes: Will update this function to communicate with the front-end
+
+:userPlaylists - list of all the current user's playlists
+Returns : Playlist object
+"""
+def pickPlaylistToUpdate(userPlaylists):
+    print("Please choose a playlist by entering the number next to it.")
+
+    playlistIndex = 0
+    for playlist in userPlaylists:
+        print(playlistIndex + " : " + playlist["name"])
+
+    playlistToUpdate = input('Your Selection: ')
+
+
+def pickNewSong(seed, playlistTracks, updatedTracks, pointOfCommonality):
     albumID = seed['track']["album"]["id"]
     albumTracks = sp.album_tracks(albumID)
+
+
+    trackNamesInNewPlaylist = []
+    for track in updatedPlaylistTracks:
+        trackNamesInNewPlaylist.append(track["track"]["name"])
+
+    trackNamesInPlaylist = []
+    for track in playlistTracks:
+        trackNamesInPlaylist.append(track["track"]["name"])
+
     if(pointOfCommonality == "ALBUM" and len(albumTracks["items"]) > 1):
         trackIDs = [x['id'] for x in albumTracks["items"]]
         fullTracks = sp.tracks(trackIDs)['tracks']
@@ -35,15 +77,19 @@ def pickSong(seed, pointOfCommonality):
         chosenArtist = contributingArtists[0]
         topTracksByArtist = sp.artist_top_tracks(chosenArtist["id"], country='US')["tracks"]
         sortedByPopularity = sorted(topTracksByArtist, key=lambda x: x["popularity"], reverse=True)
-    print("suggested song")
-    print(sortedByPopularity[1]["name"])
-    return sortedByPopularity[1]
 
+    for track in sortedByPopularity:
+        if(not isDuplicate(track["name"], trackNamesInPlaylist) and not isDuplicate(track["name"], trackNamesInNewPlaylist)):
+            print(track["name"])
+            return track
+
+    # Default track to return - may be a duplicate
+    return sortedByPopularity[0]
 
 scope = "playlist-modify-private"
 
 # initialize a spotify client
-sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scope))
+sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scope,redirect_uri='https://localhost:8888/callback'))
 userID = sp.me()['id']
 
 # Preferences(refresh period in days, update style, save or update)
@@ -70,9 +116,11 @@ for playlist in userPlaylists:
     # iterate through the songs in the playlist -- fix syntax
     playlistTracks = sp.playlist_items(playlist["id"])["items"]
     for song in playlistTracks:
+        updatedPlaylistTracks = sp.playlist_items(updatedPlaylist["id"])["items"]
         # call the songSelection method - pass the Song obj and the Update Style
         # song selection method should
-        newSong = pickSong(song, user.preferences.updateStyle)
+        newSong = pickNewSong(song, playlistTracks, updatedPlaylistTracks, user.preferences.updateStyle)
+        print(newSong["name"])
         sp.playlist_add_items(updatedPlaylist["id"], items=[newSong["uri"]], position=None)
     if (user.preferences.saveOrUpdate == "UPDATE"):
         sp.current_user_unfollow_playlist(playlist["id"])
