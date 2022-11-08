@@ -2,6 +2,8 @@
 Author: Isaiah Mercado
 Purpose: Driver file
 Desired Outcome: Connects to user's spotify account and updates playlist based on user prefs
+
+playlists must be made collaborative and visible on the profile of the user
 """
 import spotipy
 import datetime
@@ -91,6 +93,12 @@ def pickNewSong(seed, playlistTracks, updatedTracks, pointOfCommonality):
     for track in playlistTracks:
         trackNamesInPlaylist.append(track["track"]["name"])
 
+    print("user pref")
+    print(str(pointOfCommonality))
+
+    print("length of album tracks")
+    print(str(len(albumTracks["items"])))
+
     if(pointOfCommonality == "ALBUM" and len(albumTracks["items"]) > 1):
         trackIDs = [x['id'] for x in albumTracks["items"]]
         fullTracks = sp.tracks(trackIDs)['tracks']
@@ -106,6 +114,8 @@ def pickNewSong(seed, playlistTracks, updatedTracks, pointOfCommonality):
             print(track["name"])
             return track
     # Default track to return - may be a duplicate
+    if len(sortedByPopularity) == 0:
+        return "nope"
     return sortedByPopularity[0]
 
 scope = "playlist-modify-private"
@@ -115,7 +125,7 @@ sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scope,redirect_uri='https:/
 userID = sp.me()['id']
 
 # Preferences(refresh period in days, update style, save or update)
-prefs = Preferences(7, "ALBUM", "SAVE")
+prefs = Preferences(7, "ARTIST", "SAVE")
 userPlaylists = sp.current_user_playlists(limit=50, offset=0)["items"]
 # preferences, playlists, lastUpdate, userID
 user = Account(prefs, userPlaylists, datetime.datetime(2020, 4, 1), userID)
@@ -139,30 +149,10 @@ for song in playlistTracks:
     # call the songSelection method - pass the Song obj and the Update Style
     # song selection method should
     newSong = pickNewSong(song, playlistTracks, updatedPlaylistTracks, user.preferences.updateStyle)
+    if newSong == "nope":
+        continue
     print(newSong["name"])
     sp.playlist_add_items(updatedPlaylist["id"], items=[newSong["uri"]], position=None)
 if (user.preferences.saveOrUpdate == "UPDATE"):
     sp.current_user_unfollow_playlist(playlist["id"])
     sp.playlist_change_details(playlist["id"], name=playlist["name"])
-            # fetch the full album or the artist's discography
-
-            # decide on a song to update with
-
-            # add the song to a new playlist
-
-    # new playlist should be created by now
-
-    # final decision phase begins
-
-    # show the user the new playlist
-
-    # ask user if they want to...
-        # update old playlist
-        # delete the old playlist and create the new one
-        # allow auto-update to decide based on their chosen preferences
-
-    # carry out the final decision
-        # update function (old playlist, new playlist)
-        # delete/create function (old playlist, new playlist)
-
-# move on to another playlist
