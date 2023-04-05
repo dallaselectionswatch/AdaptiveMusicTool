@@ -6,11 +6,11 @@ Desired Outcome: Connects to user's spotify account and updates playlist based o
 playlists must be made collaborative and visible on the profile of the user
 """
 import spotipy
-import datetime
 from datetime import timedelta
 from Models.Preferences import Preferences
 from Models.Account import Account
 from spotipy.oauth2 import SpotifyOAuth
+import datetime
 
 SPOTIPY_CLIENT_ID='fe921ddf76d440e48f8766f8d040e71d'
 SPOTIPY_CLIENT_SECRET='464ab682558e4d3ea49be40d4efc2294'
@@ -68,6 +68,26 @@ def timeToUpdate():
         return True
     return False
 
+def pointShuffleArtist(seed):
+    contributingArtists = seed["track"]["artists"]
+    chosenArtist = contributingArtists[0]
+    topTracksByArtist = sp.artist_top_tracks(chosenArtist["id"], country='US')["tracks"]
+    sortedByPopularity = sorted(topTracksByArtist, key=lambda x: x["popularity"], reverse=True)
+    return sortedByPopularity
+
+def pointShuffleAlbum(albumTracks):
+    trackIDs = [x['id'] for x in albumTracks["items"]]
+    fullTracks = sp.tracks(trackIDs)['tracks']
+    sortedByPopularity = sorted(fullTracks, key=lambda x: x['popularity'], reverse=True)
+    return sortedByPopularity
+
+def isDuplicateInEitherPlaylist(track, trackNamesInPlaylist, trackNamesInNewPlaylist):
+    if (isDuplicate(track["name"], trackNamesInPlaylist) or isDuplicate(track["name"], trackNamesInNewPlaylist)):
+        return True
+    return False
+
+
+
 """
 pickNewSong
 
@@ -78,7 +98,7 @@ parameters
 - pointOfCommonality: artist, album, etc
 
 Notes:
-We don't allow the ALBUM point of commonality for singles
+When the album is a single, we default to point shuffle around artist
 """
 def pickNewSong(seed, playlistTracks, updatedTracks, pointOfCommonality):
     albumID = seed['track']["album"]["id"]
@@ -93,25 +113,14 @@ def pickNewSong(seed, playlistTracks, updatedTracks, pointOfCommonality):
     for track in playlistTracks:
         trackNamesInPlaylist.append(track["track"]["name"])
 
-    print("user pref")
-    print(str(pointOfCommonality))
-
-    print("length of album tracks")
-    print(str(len(albumTracks["items"])))
-
     if(pointOfCommonality == "ALBUM" and len(albumTracks["items"]) > 1):
-        trackIDs = [x['id'] for x in albumTracks["items"]]
-        fullTracks = sp.tracks(trackIDs)['tracks']
-        sortedByPopularity = sorted(fullTracks, key=lambda x: x['popularity'], reverse=True)
+        sortedByPopularity = pointShuffleAlbum(albumTracks)
     else:
-        contributingArtists = seed["track"]["artists"]
-        chosenArtist = contributingArtists[0]
-        topTracksByArtist = sp.artist_top_tracks(chosenArtist["id"], country='US')["tracks"]
-        sortedByPopularity = sorted(topTracksByArtist, key=lambda x: x["popularity"], reverse=True)
+        sortedByPopularity = pointShuffleArtist(seed)
 
     for track in sortedByPopularity:
-        if(not isDuplicate(track["name"], trackNamesInPlaylist) and not isDuplicate(track["name"], trackNamesInNewPlaylist)):
-            print(track["name"])
+        if (not isDuplicateInEitherPlaylist(track, trackNamesInPlaylist, trackNamesInNewPlaylist)):
+            print("new: " + track["name"])
             return track
     # Default track to return - may be a duplicate
     if len(sortedByPopularity) == 0:
@@ -125,10 +134,17 @@ sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scope,redirect_uri='https:/
 userID = sp.me()['id']
 
 # Preferences(refresh period in days, update style, save or update)
-prefs = Preferences(7, "ARTIST", "SAVE")
+pointShuffleTypeSelection = input("Perform point shuffle around:\n1 ARTIST\n2 Album\n")
+if (pointShuffleTypeSelection == 1):
+    pointShuffleType = "ARTIST"
+else:
+    pointShuffleType = "ALBUM"
+
+prefs = Preferences("ARTIST", "SAVE")
 userPlaylists = sp.current_user_playlists(limit=50, offset=0)["items"]
+
 # preferences, playlists, lastUpdate, userID
-user = Account(prefs, userPlaylists, datetime.datetime(2020, 4, 1), userID)
+user = Account(prefs, userPlaylists, userID)
 
 # iterate through the playlists
 playlist = pickPlaylistToUpdate(userPlaylists)
@@ -137,9 +153,9 @@ playlist = pickPlaylistToUpdate(userPlaylists)
 
 # name of new/temp playlist -- in the future we should use a version or date naming convention (ex: name_v1, name_sept10)
 existingName = playlist["name"]
-updatedName = existingName + "_UPDATED"
+updatedName = existingName + datetime.datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
 updatedDescription = "newest version of " + existingName
-print(updatedName)
+print("adding songs to playlist: " + updatedName)
 updatedPlaylist = sp.user_playlist_create(user.userID, updatedName, public=False, collaborative=True, description=updatedDescription)
 
 # iterate through the songs in the playlist -- fix syntax
@@ -148,10 +164,10 @@ for song in playlistTracks:
     updatedPlaylistTracks = sp.playlist_items(updatedPlaylist["id"])["items"]
     # call the songSelection method - pass the Song obj and the Update Style
     # song selection method should
-    newSong = pickNewSong(song, playlistTracks, updatedPlaylistTracks, user.preferences.updateStyle)
+    newSong = pickNewSong(song, playlistTracks, updatedPlaylistTracks, user.preferences.pointShuffleType)
     if newSong == "nope":
+        print("skipping")
         continue
-    print(newSong["name"])
     sp.playlist_add_items(updatedPlaylist["id"], items=[newSong["uri"]], position=None)
 if (user.preferences.saveOrUpdate == "UPDATE"):
     sp.current_user_unfollow_playlist(playlist["id"])

@@ -1,5 +1,4 @@
 class Preferences:
-  def __init__(self, refreshPeriod, updateStyle, saveOrUpdate):
-    self.refreshPeriod = refreshPeriod
-    self.updateStyle = updateStyle
+  def __init__(self, pointShuffleType, saveOrUpdate):
+    self.pointShuffleType = pointShuffleType
     self.saveOrUpdate = saveOrUpdate
